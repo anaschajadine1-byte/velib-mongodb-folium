@@ -1,0 +1,33 @@
+[
+  {
+    "fields": {
+      "name": "Hôtel de Ville",
+      "coordonnees_geo": [48.8565, 2.3523],
+      "ebike": 12,
+      "mechanical": 8,
+      "numdocksavailable": 7
+    }
+  },
+  {
+    "fields": {
+      "name": "Rivoli - Musée du Louvre",
+      "coordonnees_geo": [48.8606, 2.3376],
+      "ebike": 4,
+      "mechanical": 15,
+      "numdocksavailable": 5
+    }
+  },
+  {
+    "name": "République",
+    "coordonnees_geo": {"lat": 48.8675, "lon": 2.3638},
+    "ebike": 14,
+    "mechanical": 11,
+    "numdocksavailable": 9
+  },
+  {
+    "fields": {
+      "name": "Document volontairement invalide",
+      "ebike": 3
+    }
+  }
+]

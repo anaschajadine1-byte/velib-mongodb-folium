@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+*.pyc
+map_velib.html
+output/*.html
+hadoop/build/
+hadoop/*.jar
