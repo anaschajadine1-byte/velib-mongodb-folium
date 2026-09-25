@@ -78,6 +78,43 @@ Collection velib_collection
 
 La carte générée s'ouvre automatiquement dans le navigateur. Deux clics permettent de choisir un départ et une destination. L'application compare les stations proches disposant d'un vélo au départ et d'un dock à l'arrivée, puis affiche deux propositions.
 
+## Utilisation de la carte
+
+### 1. Explorer les stations
+
+La carte affiche les stations sur Paris. Les stations proches sont regroupées dans des cercles numérotés. Il suffit de zoomer ou de cliquer sur un groupe pour voir les marqueurs individuels.
+
+Le bouton situé en haut à droite permet de choisir entre le fond OpenStreetMap et la vue satellite. La légende en bas à gauche indique la disponibilité :
+
+- vert : au moins 10 vélos ;
+- orange : entre 1 et 9 vélos ;
+- rouge : aucun vélo ;
+- gris : station indisponible.
+
+![Vue générale de la carte avec les stations Vélib](docs/images/01-carte-generale.png)
+
+### 2. Consulter une station
+
+Un clic sur un marqueur ouvre une fiche détaillée. Elle indique le code de la station, son état, le nombre de vélos électriques et mécaniques, les docks disponibles, la capacité totale et la date de mise à jour.
+
+Le lien `Voir dans Street View` ouvre directement l'emplacement de la station.
+
+![Informations détaillées d'une station Vélib](docs/images/02-details-station.png)
+
+### 3. Planifier un trajet
+
+Le panneau en haut à gauche guide l'utilisateur :
+
+1. cliquer une première fois sur le point de départ souhaité ;
+2. cliquer une deuxième fois sur la destination ;
+3. comparer les deux propositions affichées.
+
+Le trajet bleu correspond à l'estimation la plus rapide. Le trajet violet représente l'alternative. Les traits pointillés montrent les parties effectuées à pied. Le panneau indique les stations retenues, les vélos ou docks disponibles, la durée de marche, la durée à vélo et la durée totale estimée.
+
+Le bouton `Recommencer` efface la sélection et permet de choisir deux nouveaux points.
+
+![Comparaison de deux trajets Vélib](docs/images/03-planification-trajet.png)
+
 ### Filtrer les stations
 
 Afficher uniquement les stations ayant plus de dix vélos électriques :
