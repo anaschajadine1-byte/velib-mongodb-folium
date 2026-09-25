@@ -131,17 +131,18 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
         return fetchRoutingJson(url);
       }}
 
-      async function routedPaths(mode, from, to, alternatives) {{
+      async function routedPath(mode, from, to) {{
         const url = routingEndpoints[mode] + '/route/v1/driving/' +
           coordinateString([from, to]) +
-          '?overview=full&geometries=geojson&steps=false&alternatives=' +
-          (alternatives ? 'true' : 'false');
+          '?overview=full&geometries=geojson&steps=false&alternatives=false';
         const data = await fetchRoutingJson(url);
-        return data.routes.map(route => ({{
+        const route = data.routes[0];
+        if (!route) return null;
+        return {{
           distance: route.distance,
           duration: route.duration,
           coordinates: route.geometry.coordinates.map(coord => [coord[1], coord[0]])
-        }}));
+        }};
       }}
 
       function clearRoute() {{
@@ -175,18 +176,16 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
         help.innerHTML = '<strong>Départ enregistré.</strong><br>Cliquez maintenant sur la destination.';
       }}
 
-      async function buildRoutedPlans(candidate, alternatives) {{
+      async function buildRoutedPlan(candidate) {{
         const departurePoint = stationPoint(candidate.departure.station);
         const arrivalPoint = stationPoint(candidate.arrival.station);
-        const [walkStartRoutes, bikeRoutes, walkEndRoutes] = await Promise.all([
-          routedPaths('foot', startPoint, departurePoint, false),
-          routedPaths('bike', departurePoint, arrivalPoint, alternatives),
-          routedPaths('foot', arrivalPoint, endPoint, false)
+        const [walkStart, bike, walkEnd] = await Promise.all([
+          routedPath('foot', startPoint, departurePoint),
+          routedPath('bike', departurePoint, arrivalPoint),
+          routedPath('foot', arrivalPoint, endPoint)
         ]);
-        const walkStart = walkStartRoutes[0];
-        const walkEnd = walkEndRoutes[0];
-        if (!walkStart || !walkEnd || !bikeRoutes.length) return [];
-        return bikeRoutes.slice(0, 2).map(bike => ({{
+        if (!walkStart || !walkEnd || !bike) return null;
+        return {{
           departure: candidate.departure,
           arrival: candidate.arrival,
           walkStart: walkStart,
@@ -195,13 +194,13 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
           walkingSeconds: walkStart.duration + walkEnd.duration,
           cyclingSeconds: bike.duration,
           totalSeconds: walkStart.duration + bike.duration + walkEnd.duration
-        }}));
+        }};
       }}
 
       async function calculatePlan() {{
         const token = ++calculationToken;
         clearRoute();
-        result.innerHTML = '<strong>Calcul des itinéraires dans les rues…</strong>';
+        result.innerHTML = '<strong>Calcul de l’itinéraire dans les rues…</strong>';
         const departures = nearestStations(
           startPoint,
           station => station.renting && station.bikes > 0,
@@ -261,45 +260,33 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
           candidates.sort((a, b) => a.tableDuration - b.tableDuration);
           if (!candidates.length) throw new Error('Aucune combinaison routable');
 
-          let plans = await buildRoutedPlans(candidates[0], true);
-          if (plans.length < 2 && candidates.length > 1) {{
-            const secondPairPlans = await buildRoutedPlans(candidates[1], false);
-            plans = plans.concat(secondPairPlans.slice(0, 2 - plans.length));
-          }}
-          plans.sort((a, b) => a.totalSeconds - b.totalSeconds);
+          const plan = await buildRoutedPlan(candidates[0]);
           if (token !== calculationToken) return;
-          if (!plans.length) throw new Error('Aucun itinéraire détaillé disponible');
+          if (!plan) throw new Error('Aucun itinéraire détaillé disponible');
 
-          const colors = ['#1677c8', '#8e44ad'];
+          const color = '#1677c8';
           const bounds = [startPoint, endPoint];
-          plans.forEach((plan, index) => {{
-            const color = colors[index];
-            const weight = index === 0 ? 6 : 4;
-            const opacity = index === 0 ? 0.95 : 0.8;
-            routeLayers.push(
-              L.polyline(plan.walkStart.coordinates, {{color:color, dashArray:'6,7', weight:weight, opacity:opacity}}).addTo(plannerMap),
-              L.polyline(plan.bike.coordinates, {{color:color, weight:weight, opacity:opacity}}).addTo(plannerMap),
-              L.polyline(plan.walkEnd.coordinates, {{color:color, dashArray:'6,7', weight:weight, opacity:opacity}}).addTo(plannerMap)
-            );
-            bounds.push(...plan.walkStart.coordinates, ...plan.bike.coordinates, ...plan.walkEnd.coordinates);
-          }});
+          routeLayers.push(
+            L.polyline(plan.walkStart.coordinates, {{color:color, dashArray:'6,7', weight:6, opacity:0.95}}).addTo(plannerMap),
+            L.polyline(plan.bike.coordinates, {{color:color, weight:6, opacity:0.95}}).addTo(plannerMap),
+            L.polyline(plan.walkEnd.coordinates, {{color:color, dashArray:'6,7', weight:6, opacity:0.95}}).addTo(plannerMap)
+          );
+          bounds.push(...plan.walkStart.coordinates, ...plan.bike.coordinates, ...plan.walkEnd.coordinates);
           plannerMap.fitBounds(L.latLngBounds(bounds), {{padding:[60,60]}});
 
-          help.innerHTML = '<strong>Itinéraires routiers calculés.</strong> Bleu : le plus rapide. Violet : l’alternative. Les traits pointillés représentent la marche.';
-          result.innerHTML = plans.map((plan, index) => {{
-            const walkingMinutes = Math.max(1, Math.round(plan.walkingSeconds / 60));
-            const cyclingMinutes = Math.max(1, Math.round(plan.cyclingSeconds / 60));
-            const totalMinutes = Math.max(1, Math.round(plan.totalSeconds / 60));
-            return '<div style="border-left:5px solid ' + colors[index] + ';padding:7px 8px;margin:8px 0;background:#f7f7f7">' +
-              '<strong>' + (index === 0 ? 'Trajet 1 — le plus rapide' : 'Trajet 2 — alternative routière') + '</strong><br>' +
-              'Départ : ' + escapeHtml(plan.departure.station.name) +
-              ' (' + plan.departure.station.bikes + ' vélo(x))<br>' +
-              'Arrivée : ' + escapeHtml(plan.arrival.station.name) +
-              ' (' + plan.arrival.station.docks + ' dock(s))<br>' +
-              'Marche : ' + walkingMinutes + ' min — Vélo : ' +
-              cyclingMinutes + ' min (' + (plan.bike.distance / 1000).toFixed(1) + ' km)<br>' +
-              '<strong>Durée totale : ' + totalMinutes + ' min</strong></div>';
-          }}).join('');
+          const walkingMinutes = Math.max(1, Math.round(plan.walkingSeconds / 60));
+          const cyclingMinutes = Math.max(1, Math.round(plan.cyclingSeconds / 60));
+          const totalMinutes = Math.max(1, Math.round(plan.totalSeconds / 60));
+          help.innerHTML = '<strong>Itinéraire routier calculé.</strong> Le tracé bleu suit les rues. Les traits pointillés représentent la marche.';
+          result.innerHTML = '<div style="border-left:5px solid ' + color + ';padding:7px 8px;margin:8px 0;background:#f7f7f7">' +
+            '<strong>Trajet le plus rapide</strong><br>' +
+            'Départ : ' + escapeHtml(plan.departure.station.name) +
+            ' (' + plan.departure.station.bikes + ' vélo(x))<br>' +
+            'Arrivée : ' + escapeHtml(plan.arrival.station.name) +
+            ' (' + plan.arrival.station.docks + ' dock(s))<br>' +
+            'Marche : ' + walkingMinutes + ' min — Vélo : ' +
+            cyclingMinutes + ' min (' + (plan.bike.distance / 1000).toFixed(1) + ' km)<br>' +
+            '<strong>Durée totale : ' + totalMinutes + ' min</strong></div>';
         }} catch (error) {{
           if (token !== calculationToken) return;
           console.error('Erreur de routage OSRM', error);
@@ -311,7 +298,7 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
       function setDestination(latlng) {{
         endPoint = latlng;
         endMarker = L.marker(latlng).addTo(plannerMap).bindTooltip('Votre destination').openTooltip();
-        help.innerHTML = '<strong>Destination enregistrée.</strong><br>Calcul des trajets dans les rues…';
+        help.innerHTML = '<strong>Destination enregistrée.</strong><br>Calcul du trajet dans les rues…';
         calculatePlan();
       }}
 

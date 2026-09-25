@@ -16,5 +16,5 @@ Validation effectuée le 24 septembre 2026 sous Windows avec Python 3.11.9.
 | Répartition géographique | Réussi | 5 stations dans chacun des 20 arrondissements | Échantillon, pas les 1 500 stations du réseau |
 | Filtre MongoDB réel `> 10` | Réussi | Requête `$gt` exécutée dans MongoDB | Le nombre varie avec la disponibilité du moment |
 | Adresse / GeoPy | Réussi | Géocodage réel de « 10 rue de Rivoli, 75004 Paris » et carte générée | Dépend de Nominatim et d'Internet |
-| Planificateur interactif | Réussi | Deux clics réels dans le navigateur : sélection des stations, matrices de durée OSRM et deux tracés suivant les rues | Dépend du service OSRM et d'Internet ; pas de trafic en temps réel |
+| Planificateur interactif | Réussi | Deux clics réels dans le navigateur : sélection des stations, matrices de durée OSRM et trajet le plus rapide suivant les rues | Dépend du service OSRM et d'Internet ; pas de trafic en temps réel |
 | Résultat global automatisé | Réussi | `pytest` : **9 tests réussis** | Aucune observée sur l'instantané testé |

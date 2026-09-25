@@ -11,7 +11,7 @@ Ce projet exploite des données de stations Vélib' avec Python et MongoDB, puis
 - carte Folium avec marqueurs, regroupement et légende de disponibilité ;
 - popups détaillant les vélos et les docks disponibles ;
 - sélection libre d'un départ et d'une destination ;
-- proposition de deux trajets qui suivent les rues et les voies cyclables ;
+- proposition du trajet le plus rapide suivant les rues et les voies cyclables ;
 - recherche facultative autour d'une adresse avec GeoPy ;
 - tests automatisés avec pytest ;
 - exercice Hadoop MapReduce en Java.
@@ -77,7 +77,7 @@ Base       velib_db
 Collection velib_collection
 ```
 
-La carte générée s'ouvre automatiquement dans le navigateur. Deux clics permettent de choisir un départ et une destination. L'application compare les stations proches disposant d'un vélo au départ et d'un dock à l'arrivée, puis affiche deux propositions.
+La carte générée s'ouvre automatiquement dans le navigateur. Deux clics permettent de choisir un départ et une destination. L'application compare les stations proches disposant d'un vélo au départ et d'un dock à l'arrivée, puis affiche le trajet le plus rapide.
 
 ## Utilisation de la carte
 
@@ -108,15 +108,15 @@ Le panneau en haut à gauche guide l'utilisateur :
 
 1. cliquer une première fois sur le point de départ souhaité ;
 2. cliquer une deuxième fois sur la destination ;
-3. comparer les deux propositions affichées.
+3. consulter le trajet le plus rapide affiché.
 
-Le trajet bleu correspond au parcours routier le plus rapide. Le trajet violet représente une alternative routière. Les deux tracés suivent les rues à partir des données OpenStreetMap. Les traits pointillés montrent les parties effectuées à pied. Le panneau indique les stations retenues, les vélos ou docks disponibles, la durée de marche, la durée à vélo, la distance cyclable et la durée totale.
+Le trajet bleu correspond au parcours routier le plus rapide. Il suit les rues à partir des données OpenStreetMap. Les traits pointillés montrent les parties effectuées à pied. Le panneau indique les stations retenues, les vélos ou docks disponibles, la durée de marche, la durée à vélo, la distance cyclable et la durée totale.
 
 Le planificateur utilise les services OSRM dédiés à la marche et au vélo. Une connexion Internet est nécessaire au moment du calcul.
 
 Le bouton `Recommencer` efface la sélection et permet de choisir deux nouveaux points.
 
-![Comparaison de deux trajets Vélib suivant les rues](docs/images/03-planification-trajet.png)
+![Trajet Vélib le plus rapide suivant les rues](docs/images/03-planification-trajet.png)
 
 ### Filtrer les stations
 
