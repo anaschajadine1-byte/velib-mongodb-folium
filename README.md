@@ -1,6 +1,6 @@
-# Vélib' : MongoDB, Folium et Hadoop MapReduce
+# Vélib' : MongoDB, Folium et routage OSRM
 
-Ce projet exploite des données de stations Vélib' avec Python et MongoDB, puis les affiche sur une carte Folium interactive. Il contient également un exercice Hadoop MapReduce en Java consacré à l'analyse d'associations de produits.
+Ce projet exploite des données de stations Vélib' avec Python et MongoDB, puis les affiche sur une carte Folium interactive avec un planificateur de trajet.
 
 ## Fonctionnalités
 
@@ -13,26 +13,22 @@ Ce projet exploite des données de stations Vélib' avec Python et MongoDB, puis
 - sélection libre d'un départ et d'une destination ;
 - proposition du trajet le plus rapide suivant les rues et les voies cyclables ;
 - recherche facultative autour d'une adresse avec GeoPy ;
-- tests automatisés avec pytest ;
-- exercice Hadoop MapReduce en Java.
+- tests automatisés avec pytest.
 
 ## Architecture
 
 ```text
 Flux GBFS -> MongoDB -> PyMongo -> normalisation Python -> carte Folium
                                                    -> routage OSRM
-
-donnees.csv -> MonMapper -> Shuffle Hadoop -> MonReducer -> résultats HDFS
 ```
 
-Les deux chaînes sont indépendantes. MongoDB alimente l'application cartographique. Hadoop illustre un traitement distribué par lots sur un fichier CSV.
+MongoDB alimente l'application cartographique. OSRM calcule le trajet piéton et cyclable à partir des données OpenStreetMap.
 
 ## Prérequis
 
 - Python 3.10 ou supérieur ;
 - MongoDB accessible sur `mongodb://localhost:27017/` ;
-- PowerShell pour les scripts de lancement ;
-- Java et Hadoop pour la partie MapReduce.
+- PowerShell pour les scripts de lancement.
 
 ## Installation
 
@@ -155,17 +151,6 @@ Afficher uniquement les stations ayant plus de dix vélos électriques :
 ```
 
 Le programme accepte aussi des champs placés à la racine et des coordonnées au format GeoJSON.
-
-## Hadoop MapReduce
-
-Le dossier `hadoop` contient :
-
-- `MonMapper.java`, qui produit les paires de produits présentes dans chaque panier ;
-- `MonReducer.java`, qui compte les associations et trie les produits associés ;
-- `MonDriver.java`, qui configure le job, trois reducers et les chemins HDFS ;
-- `donnees.csv`, le jeu de données d'entrée.
-
-Le job lit `/mpmr/input` et écrit ses résultats dans `/mpmr/output`. Le dossier de sortie doit être absent avant chaque lancement.
 
 ## Tests
 
