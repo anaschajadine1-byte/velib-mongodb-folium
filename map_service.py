@@ -17,7 +17,7 @@ PARIS_CENTER = (48.8566, 2.3522)
 
 
 def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None]]) -> str:
-    """Retourne le panneau et le JavaScript du planificateur pédagogique."""
+    """Retourne le panneau et le JavaScript du planificateur routier."""
     station_data = [
         {
             "name": station.name,
@@ -48,8 +48,8 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
       </button>
       <div id="planner-result" style="margin-top:10px; line-height:1.45;"></div>
       <div style="font-size:11px; color:#666; margin-top:9px;">
-        Les durées sont des estimations pédagogiques basées sur la distance,
-        la marche et une vitesse moyenne à vélo.
+        Les parcours suivent les rues OpenStreetMap. Le calcul nécessite une
+        connexion Internet au service de routage OSRM.
       </div>
     </div>
     <script>
@@ -61,8 +61,13 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
       let startMarker = null;
       let endMarker = null;
       let routeLayers = [];
+      let calculationToken = 0;
       const help = document.getElementById('planner-help');
       const result = document.getElementById('planner-result');
+      const routingEndpoints = {{
+        foot: 'https://routing.openstreetmap.de/routed-foot',
+        bike: 'https://routing.openstreetmap.de/routed-bike'
+      }};
 
       function escapeHtml(value) {{
         const div = document.createElement('div');
@@ -97,12 +102,55 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
           .slice(0, count);
       }}
 
+      function coordinateString(points) {{
+        return points
+          .map(point => point.lng.toFixed(6) + ',' + point.lat.toFixed(6))
+          .join(';');
+      }}
+
+      async function fetchRoutingJson(url) {{
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 15000);
+        try {{
+          const response = await fetch(url, {{signal: controller.signal}});
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const data = await response.json();
+          if (data.code !== 'Ok') throw new Error(data.message || data.code);
+          return data;
+        }} finally {{
+          window.clearTimeout(timeout);
+        }}
+      }}
+
+      async function routingTable(mode, points, sources, destinations) {{
+        const url = routingEndpoints[mode] + '/table/v1/driving/' +
+          coordinateString(points) +
+          '?sources=' + encodeURIComponent(sources.join(';')) +
+          '&destinations=' + encodeURIComponent(destinations.join(';')) +
+          '&annotations=duration,distance';
+        return fetchRoutingJson(url);
+      }}
+
+      async function routedPaths(mode, from, to, alternatives) {{
+        const url = routingEndpoints[mode] + '/route/v1/driving/' +
+          coordinateString([from, to]) +
+          '?overview=full&geometries=geojson&steps=false&alternatives=' +
+          (alternatives ? 'true' : 'false');
+        const data = await fetchRoutingJson(url);
+        return data.routes.map(route => ({{
+          distance: route.distance,
+          duration: route.duration,
+          coordinates: route.geometry.coordinates.map(coord => [coord[1], coord[0]])
+        }}));
+      }}
+
       function clearRoute() {{
         routeLayers.forEach(layer => plannerMap.removeLayer(layer));
         routeLayers = [];
       }}
 
       function resetTrip() {{
+        calculationToken += 1;
         clearRoute();
         if (startMarker) plannerMap.removeLayer(startMarker);
         if (endMarker) plannerMap.removeLayer(endMarker);
@@ -127,8 +175,33 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
         help.innerHTML = '<strong>Départ enregistré.</strong><br>Cliquez maintenant sur la destination.';
       }}
 
-      function calculatePlan() {{
+      async function buildRoutedPlans(candidate, alternatives) {{
+        const departurePoint = stationPoint(candidate.departure.station);
+        const arrivalPoint = stationPoint(candidate.arrival.station);
+        const [walkStartRoutes, bikeRoutes, walkEndRoutes] = await Promise.all([
+          routedPaths('foot', startPoint, departurePoint, false),
+          routedPaths('bike', departurePoint, arrivalPoint, alternatives),
+          routedPaths('foot', arrivalPoint, endPoint, false)
+        ]);
+        const walkStart = walkStartRoutes[0];
+        const walkEnd = walkEndRoutes[0];
+        if (!walkStart || !walkEnd || !bikeRoutes.length) return [];
+        return bikeRoutes.slice(0, 2).map(bike => ({{
+          departure: candidate.departure,
+          arrival: candidate.arrival,
+          walkStart: walkStart,
+          bike: bike,
+          walkEnd: walkEnd,
+          walkingSeconds: walkStart.duration + walkEnd.duration,
+          cyclingSeconds: bike.duration,
+          totalSeconds: walkStart.duration + bike.duration + walkEnd.duration
+        }}));
+      }}
+
+      async function calculatePlan() {{
+        const token = ++calculationToken;
         clearRoute();
+        result.innerHTML = '<strong>Calcul des itinéraires dans les rues…</strong>';
         const departures = nearestStations(
           startPoint,
           station => station.renting && station.bikes > 0,
@@ -148,66 +221,97 @@ def _trip_planner_html(map_name: str, stations: list[tuple[Station, float | None
           return;
         }}
 
-        const candidates = [];
-        departures.forEach(departure => {{
-          arrivals.forEach(arrival => {{
-            if (departure.station.name === arrival.station.name) return;
-            const departurePoint = stationPoint(departure.station);
-            const arrivalPoint = stationPoint(arrival.station);
-            const cyclingDistance = distanceMeters(departurePoint, arrivalPoint) * 1.25;
-            const cyclingMinutes = Math.max(1, Math.ceil(cyclingDistance / 250));
-            const walkingMinutes = Math.ceil((departure.distance + arrival.distance) / 75);
-            candidates.push({{
-              departure: departure,
-              arrival: arrival,
-              cyclingDistance: cyclingDistance,
-              cyclingMinutes: cyclingMinutes,
-              walkingMinutes: walkingMinutes,
-              totalMinutes: cyclingMinutes + walkingMinutes
+        try {{
+          const points = [
+            startPoint,
+            ...departures.map(item => stationPoint(item.station)),
+            ...arrivals.map(item => stationPoint(item.station)),
+            endPoint
+          ];
+          const departureIndexes = departures.map((_, index) => index + 1);
+          const arrivalOffset = 1 + departures.length;
+          const arrivalIndexes = arrivals.map((_, index) => arrivalOffset + index);
+          const endIndex = points.length - 1;
+
+          const [footTable, bikeTable] = await Promise.all([
+            routingTable(
+              'foot',
+              points,
+              [0, ...arrivalIndexes],
+              [...departureIndexes, endIndex]
+            ),
+            routingTable('bike', points, departureIndexes, arrivalIndexes)
+          ]);
+
+          const candidates = [];
+          departures.forEach((departure, departureIndex) => {{
+            arrivals.forEach((arrival, arrivalIndex) => {{
+              if (departure.station.name === arrival.station.name) return;
+              const walkToBike = footTable.durations[0][departureIndex];
+              const bikeDuration = bikeTable.durations[departureIndex][arrivalIndex];
+              const walkFromBike = footTable.durations[arrivalIndex + 1][departures.length];
+              if (walkToBike == null || bikeDuration == null || walkFromBike == null) return;
+              candidates.push({{
+                departure: departure,
+                arrival: arrival,
+                tableDuration: walkToBike + bikeDuration + walkFromBike
+              }});
             }});
           }});
-        }});
-        candidates.sort((a, b) => a.totalMinutes - b.totalMinutes || a.walkingMinutes - b.walkingMinutes);
-        const plans = candidates.slice(0, 2);
-        if (!plans.length) {{
-          result.innerHTML = '<strong>Aucun trajet exploitable entre ces deux points.</strong>';
-          return;
+          candidates.sort((a, b) => a.tableDuration - b.tableDuration);
+          if (!candidates.length) throw new Error('Aucune combinaison routable');
+
+          let plans = await buildRoutedPlans(candidates[0], true);
+          if (plans.length < 2 && candidates.length > 1) {{
+            const secondPairPlans = await buildRoutedPlans(candidates[1], false);
+            plans = plans.concat(secondPairPlans.slice(0, 2 - plans.length));
+          }}
+          plans.sort((a, b) => a.totalSeconds - b.totalSeconds);
+          if (token !== calculationToken) return;
+          if (!plans.length) throw new Error('Aucun itinéraire détaillé disponible');
+
+          const colors = ['#1677c8', '#8e44ad'];
+          const bounds = [startPoint, endPoint];
+          plans.forEach((plan, index) => {{
+            const color = colors[index];
+            const weight = index === 0 ? 6 : 4;
+            const opacity = index === 0 ? 0.95 : 0.8;
+            routeLayers.push(
+              L.polyline(plan.walkStart.coordinates, {{color:color, dashArray:'6,7', weight:weight, opacity:opacity}}).addTo(plannerMap),
+              L.polyline(plan.bike.coordinates, {{color:color, weight:weight, opacity:opacity}}).addTo(plannerMap),
+              L.polyline(plan.walkEnd.coordinates, {{color:color, dashArray:'6,7', weight:weight, opacity:opacity}}).addTo(plannerMap)
+            );
+            bounds.push(...plan.walkStart.coordinates, ...plan.bike.coordinates, ...plan.walkEnd.coordinates);
+          }});
+          plannerMap.fitBounds(L.latLngBounds(bounds), {{padding:[60,60]}});
+
+          help.innerHTML = '<strong>Itinéraires routiers calculés.</strong> Bleu : le plus rapide. Violet : l’alternative. Les traits pointillés représentent la marche.';
+          result.innerHTML = plans.map((plan, index) => {{
+            const walkingMinutes = Math.max(1, Math.round(plan.walkingSeconds / 60));
+            const cyclingMinutes = Math.max(1, Math.round(plan.cyclingSeconds / 60));
+            const totalMinutes = Math.max(1, Math.round(plan.totalSeconds / 60));
+            return '<div style="border-left:5px solid ' + colors[index] + ';padding:7px 8px;margin:8px 0;background:#f7f7f7">' +
+              '<strong>' + (index === 0 ? 'Trajet 1 — le plus rapide' : 'Trajet 2 — alternative routière') + '</strong><br>' +
+              'Départ : ' + escapeHtml(plan.departure.station.name) +
+              ' (' + plan.departure.station.bikes + ' vélo(x))<br>' +
+              'Arrivée : ' + escapeHtml(plan.arrival.station.name) +
+              ' (' + plan.arrival.station.docks + ' dock(s))<br>' +
+              'Marche : ' + walkingMinutes + ' min — Vélo : ' +
+              cyclingMinutes + ' min (' + (plan.bike.distance / 1000).toFixed(1) + ' km)<br>' +
+              '<strong>Durée totale : ' + totalMinutes + ' min</strong></div>';
+          }}).join('');
+        }} catch (error) {{
+          if (token !== calculationToken) return;
+          console.error('Erreur de routage OSRM', error);
+          help.innerHTML = '<strong>Le service de routage ne répond pas.</strong>';
+          result.innerHTML = 'Vérifiez la connexion Internet puis cliquez sur « Recommencer ».';
         }}
-
-        const colors = ['#1677c8', '#8e44ad'];
-        const bounds = [startPoint, endPoint];
-        plans.forEach((plan, index) => {{
-          const color = colors[index];
-          const departurePoint = stationPoint(plan.departure.station);
-          const arrivalPoint = stationPoint(plan.arrival.station);
-          const weight = index === 0 ? 6 : 4;
-          const opacity = index === 0 ? 0.95 : 0.8;
-          routeLayers.push(
-            L.polyline([startPoint, departurePoint], {{color:color, dashArray:'6,7', weight:weight, opacity:opacity}}).addTo(plannerMap),
-            L.polyline([departurePoint, arrivalPoint], {{color:color, weight:weight, opacity:opacity}}).addTo(plannerMap),
-            L.polyline([arrivalPoint, endPoint], {{color:color, dashArray:'6,7', weight:weight, opacity:opacity}}).addTo(plannerMap)
-          );
-          bounds.push(departurePoint, arrivalPoint);
-        }});
-        plannerMap.fitBounds(L.latLngBounds(bounds), {{padding:[60,60]}});
-
-        result.innerHTML = plans.map((plan, index) =>
-          '<div style="border-left:5px solid ' + colors[index] + ';padding:7px 8px;margin:8px 0;background:#f7f7f7">' +
-          '<strong>' + (index === 0 ? 'Trajet 1 — le plus rapide' : 'Trajet 2 — alternative rapide') + '</strong><br>' +
-          'Départ : ' + escapeHtml(plan.departure.station.name) +
-          ' (' + plan.departure.station.bikes + ' vélo(x))<br>' +
-          'Arrivée : ' + escapeHtml(plan.arrival.station.name) +
-          ' (' + plan.arrival.station.docks + ' dock(s))<br>' +
-          'Marche : ≈ ' + plan.walkingMinutes + ' min — Vélo : ≈ ' +
-          plan.cyclingMinutes + ' min (' + (plan.cyclingDistance / 1000).toFixed(1) + ' km)<br>' +
-          '<strong>Durée totale : ≈ ' + plan.totalMinutes + ' min</strong></div>'
-        ).join('');
       }}
 
       function setDestination(latlng) {{
         endPoint = latlng;
         endMarker = L.marker(latlng).addTo(plannerMap).bindTooltip('Votre destination').openTooltip();
-        help.innerHTML = '<strong>Deux trajets calculés.</strong> Bleu : le plus rapide. Violet : l’alternative. Les traits pointillés représentent la marche.';
+        help.innerHTML = '<strong>Destination enregistrée.</strong><br>Calcul des trajets dans les rues…';
         calculatePlan();
       }}
 

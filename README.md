@@ -11,7 +11,7 @@ Ce projet exploite des données de stations Vélib' avec Python et MongoDB, puis
 - carte Folium avec marqueurs, regroupement et légende de disponibilité ;
 - popups détaillant les vélos et les docks disponibles ;
 - sélection libre d'un départ et d'une destination ;
-- proposition des deux trajets estimés les plus rapides ;
+- proposition de deux trajets qui suivent les rues et les voies cyclables ;
 - recherche facultative autour d'une adresse avec GeoPy ;
 - tests automatisés avec pytest ;
 - exercice Hadoop MapReduce en Java.
@@ -20,6 +20,7 @@ Ce projet exploite des données de stations Vélib' avec Python et MongoDB, puis
 
 ```text
 Flux GBFS -> MongoDB -> PyMongo -> normalisation Python -> carte Folium
+                                                   -> routage OSRM
 
 donnees.csv -> MonMapper -> Shuffle Hadoop -> MonReducer -> résultats HDFS
 ```
@@ -109,11 +110,13 @@ Le panneau en haut à gauche guide l'utilisateur :
 2. cliquer une deuxième fois sur la destination ;
 3. comparer les deux propositions affichées.
 
-Le trajet bleu correspond à l'estimation la plus rapide. Le trajet violet représente l'alternative. Les traits pointillés montrent les parties effectuées à pied. Le panneau indique les stations retenues, les vélos ou docks disponibles, la durée de marche, la durée à vélo et la durée totale estimée.
+Le trajet bleu correspond au parcours routier le plus rapide. Le trajet violet représente une alternative routière. Les deux tracés suivent les rues à partir des données OpenStreetMap. Les traits pointillés montrent les parties effectuées à pied. Le panneau indique les stations retenues, les vélos ou docks disponibles, la durée de marche, la durée à vélo, la distance cyclable et la durée totale.
+
+Le planificateur utilise les services OSRM dédiés à la marche et au vélo. Une connexion Internet est nécessaire au moment du calcul.
 
 Le bouton `Recommencer` efface la sélection et permet de choisir deux nouveaux points.
 
-![Comparaison de deux trajets Vélib](docs/images/03-planification-trajet.png)
+![Comparaison de deux trajets Vélib suivant les rues](docs/images/03-planification-trajet.png)
 
 ### Filtrer les stations
 
@@ -175,6 +178,6 @@ La validation actuelle comprend neuf tests automatisés. Le détail se trouve da
 ## Limites connues
 
 - les disponibilités représentent un instantané et doivent être rafraîchies ;
-- le planificateur estime les distances sans suivre précisément le réseau routier ;
+- le routage dépend d'un service OSRM externe et ne tient pas compte du trafic en temps réel ;
 - les tuiles cartographiques et le géocodage nécessitent une connexion Internet ;
 - la démonstration utilise 100 stations et non l'ensemble du réseau.

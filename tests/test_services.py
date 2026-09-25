@@ -31,7 +31,11 @@ def test_demo_pipeline_generates_map(tmp_path):
     assert "leaflet" in html.lower()
     assert "Planifier un trajet Vélib" in html
     assert "Trajet 1 — le plus rapide" in html
-    assert "Trajet 2 — alternative rapide" in html
+    assert "Trajet 2 — alternative routière" in html
+    assert "routing.openstreetmap.de/routed-bike" in html
+    assert "routing.openstreetmap.de/routed-foot" in html
+    assert "geometries=geojson" in html
+    assert "cyclingDistance = distanceMeters" not in html
     assert "Prix estimé" not in html
 
 
